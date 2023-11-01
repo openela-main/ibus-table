@@ -1,0 +1,166 @@
+diff -Nru ibus-table-1.9.18/engine/table.py ibus-table-1.9.18.new/engine/table.py
+--- ibus-table-1.9.18/engine/table.py	2020-07-23 17:21:31.934904346 +0200
++++ ibus-table-1.9.18.new/engine/table.py	2020-07-23 17:28:19.342746241 +0200
+@@ -1752,6 +1752,9 @@
+             self._input_mode)
+         self._update_ui()
+ 
++    def get_pinyin_mode(self):
++        return self._editor._py_mode
++
+     def set_onechar_mode(self, mode=False, update_dconf=True):
+         if mode == self._editor._onechar:
+             return
+diff -Nru ibus-table-1.9.18/tests/test_0_gtk.py ibus-table-1.9.18.new/tests/test_0_gtk.py
+--- ibus-table-1.9.18/tests/test_0_gtk.py	2020-07-23 17:21:31.940904285 +0200
++++ ibus-table-1.9.18.new/tests/test_0_gtk.py	2020-07-23 17:37:23.234210681 +0200
+@@ -205,14 +205,14 @@
+         object_path = '%s/%d' % (self.ENGINE_PATH, self.__id)
+         db_dir = '/usr/share/ibus-table/tables'
+         db_file = os.path.join(db_dir, engine_name + '.db')
+-        database = tabsqlitedb.TabSqliteDb(filename=db_file, user_db=':memory:')
+-        self.__engine = table.TabEngine(
++        database = tabsqlitedb.tabsqlitedb(filename=db_file, user_db=':memory:')
++        self.__engine = table.tabengine(
+             self.__bus,
+             object_path,
+             database)
+         self.__engine.connect('focus-in', self.__engine_focus_in)
+         self.__engine.connect('focus-out', self.__engine_focus_out)
+-        # FIXME: Need to connect 'reset' after TabEngine.clear_all_input_and_preedit()
++        # FIXME: Need to connect 'reset' after tabengine.clear_all_input_and_preedit()
+         # is called.
+         self.__engine.connect_after('reset', self.__engine_reset)
+         self.__bus.get_connection().signal_subscribe(
+diff -Nru ibus-table-1.9.18/tests/test_it.py ibus-table-1.9.18.new/tests/test_it.py
+--- ibus-table-1.9.18/tests/test_it.py	2020-07-23 17:21:31.940904285 +0200
++++ ibus-table-1.9.18.new/tests/test_it.py	2020-07-23 17:29:52.032800325 +0200
+@@ -78,7 +78,6 @@
+ ORIG_SINGLE_WILDCARD_CHAR = None
+ ORIG_MULTI_WILDCARD_CHAR = None
+ ORIG_PINYIN_MODE = None
+-ORIG_SUGGESTION_MODE = None
+ 
+ def backup_original_settings():
+     global ENGINE
+@@ -97,7 +96,6 @@
+     global ORIG_SINGLE_WILDCARD_CHAR
+     global ORIG_MULTI_WILDCARD_CHAR
+     global ORIG_PINYIN_MODE
+-    global ORIG_SUGGESTION_MODE
+     ORIG_INPUT_MODE = ENGINE.get_input_mode()
+     ORIG_CHINESE_MODE = ENGINE.get_chinese_mode()
+     ORIG_LETTER_WIDTH = ENGINE.get_letter_width()
+@@ -113,7 +111,6 @@
+     ORIG_SINGLE_WILDCARD_CHAR = ENGINE.get_single_wildcard_char()
+     ORIG_MULTI_WILDCARD_CHAR = ENGINE.get_multi_wildcard_char()
+     ORIG_PINYIN_MODE = ENGINE.get_pinyin_mode()
+-    ORIG_SUGGESTION_MODE = ENGINE.get_suggestion_mode()
+ 
+ def restore_original_settings():
+     global ENGINE
+@@ -132,7 +129,6 @@
+     global ORIG_SINGLE_WILDCARD_CHAR
+     global ORIG_MULTI_WILDCARD_CHAR
+     global ORIG_PINYIN_MODE
+-    global ORIG_SUGGESTION_MODE
+     ENGINE.set_input_mode(ORIG_INPUT_MODE)
+     ENGINE.set_chinese_mode(ORIG_CHINESE_MODE)
+     ENGINE.set_letter_width(ORIG_LETTER_WIDTH[0], input_mode=0)
+@@ -150,7 +146,6 @@
+     ENGINE.set_single_wildcard_char(ORIG_SINGLE_WILDCARD_CHAR)
+     ENGINE.set_multi_wildcard_char(ORIG_MULTI_WILDCARD_CHAR)
+     ENGINE.set_pinyin_mode(ORIG_PINYIN_MODE)
+-    ENGINE.set_suggestion_mode(ORIG_SUGGESTION_MODE)
+ 
+ def set_default_settings():
+     global ENGINE
+@@ -256,7 +251,6 @@
+     ENGINE.set_multi_wildcard_char(multi_wildcard_char)
+ 
+     ENGINE.set_pinyin_mode(False)
+-    ENGINE.set_suggestion_mode(False)
+ 
+ def set_up(engine_name):
+     '''
+@@ -290,7 +284,7 @@
+     assert IBus.PropList is not IBUS_PROP_LIST
+     assert IBus.PropList is MockPropList
+     # Reload the table module so that the patches
+-    # are applied to TabEngine:
++    # are applied to tabengine:
+     sys.path.insert(0, '../engine')
+     importlib.reload(table)
+     sys.path.pop(0)
+@@ -302,9 +296,9 @@
+         ENGINE = None
+         tear_down()
+         return False
+-    TABSQLITEDB = tabsqlitedb.TabSqliteDb(
++    TABSQLITEDB = tabsqlitedb.tabsqlitedb(
+         filename=db_file, user_db=':memory:')
+-    ENGINE = table.TabEngine(
++    ENGINE = table.tabengine(
+         bus,
+         '/com/redhat/IBus/engines/table/%s/engine/0' %engine_name,
+         TABSQLITEDB,
+@@ -380,59 +374,6 @@
+         self.assertEqual(ENGINE.mock_preedit_text, '')
+         self.assertEqual(ENGINE.mock_committed_text, '工爱工')
+ 
+-    def test_suggestion_mode(self):
+-        if not ENGINE._ime_sg:
+-            self.skipTest("This engine does not have a suggestion mode.")
+-        # Suggestion mode is False by default:
+-        self.assertEqual(ENGINE.get_suggestion_mode(), False)
+-        self.assertEqual(ENGINE.get_pinyin_mode(), False)
+-        ENGINE.do_process_key_event(IBus.KEY_a, 0, 0)
+-        self.assertEqual(ENGINE.mock_preedit_text, '工')
+-        ENGINE.do_process_key_event(IBus.KEY_space, 0, 0)
+-        self.assertEqual(ENGINE.mock_preedit_text, '')
+-        self.assertEqual(ENGINE.mock_committed_text, '工')
+-        self.assertEqual(ENGINE._editor._lookup_table.mock_candidates, [])
+-        ENGINE.set_suggestion_mode(True)
+-        ENGINE.do_process_key_event(IBus.KEY_a, 0, 0)
+-        self.assertEqual(ENGINE.mock_preedit_text, '工')
+-        ENGINE.do_process_key_event(IBus.KEY_space, 0, 0)
+-        self.assertEqual(ENGINE.mock_preedit_text, '')
+-        self.assertEqual(ENGINE.mock_committed_text, '工工')
+-        self.assertEqual(ENGINE._editor._lookup_table.mock_candidates,
+-                         ['工作人员 673 0',
+-                          '工作会议 310 0',
+-                          '工作报告 267 0',
+-                          '工人阶级 146 0',
+-                          '工作重点 78 0',
+-                          '工作小组 73 0',
+-                          '工业企业 71 0',
+-                          '工业大学 69 0',
+-                          '工作单位 61 0',
+-                          '工业生产 58 0'])
+-        ENGINE.do_process_key_event(IBus.KEY_space, 0, 0)
+-        self.assertEqual(ENGINE.mock_preedit_text, '')
+-        self.assertEqual(ENGINE.mock_committed_text, '工工作人员')
+-        ENGINE.set_pinyin_mode(True)
+-        ENGINE.do_process_key_event(IBus.KEY_a, 0, 0)
+-        self.assertEqual(ENGINE.mock_preedit_text, '爱')
+-        ENGINE.do_process_key_event(IBus.KEY_space, 0, 0)
+-        self.assertEqual(ENGINE.mock_preedit_text, '')
+-        self.assertEqual(ENGINE.mock_committed_text, '工工作人员爱')
+-        self.assertEqual(ENGINE._editor._lookup_table.mock_candidates,
+-                         ['爱因斯坦 1109 0',
+-                          '爱情故事 519 0',
+-                          '爱国主义 191 0',
+-                          '爱尔兰语 91 0',
+-                          '爱好和平 62 0',
+-                          '爱情小说 58 0',
+-                          '爱不释手 39 0',
+-                          '爱国热情 35 0',
+-                          '爱莫能助 34 0',
+-                          '爱理不理 32 0'])
+-        ENGINE.do_process_key_event(IBus.KEY_space, 0, 0)
+-        self.assertEqual(ENGINE.mock_preedit_text, '')
+-        self.assertEqual(ENGINE.mock_committed_text, '工工作人员爱因斯坦')
+-
+     def test_commit_to_preedit_switching_to_pinyin_defining_a_phrase(self):
+         ENGINE.do_process_key_event(IBus.KEY_a, 0, 0)
+         # commit to preëdit needs a press and release of either

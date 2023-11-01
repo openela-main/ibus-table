@@ -1,0 +1,62 @@
+diff -ru ibus-table-1.9.18.orig/tests/test_0_gtk.py ibus-table-1.9.18/tests/test_0_gtk.py
+--- ibus-table-1.9.18.orig/tests/test_0_gtk.py	2020-07-27 09:41:25.799087549 +0200
++++ ibus-table-1.9.18/tests/test_0_gtk.py	2020-07-28 12:23:43.127130148 +0200
+@@ -68,6 +68,7 @@
+ 
+ DONE_EXIT = True
+ ENGINE_NAME = 'wubi-jidian86'
++CONFIG_SECTION = 'engine/table/%s' % ENGINE_NAME
+ 
+ from gtkcases import TestCases
+ 
+@@ -96,16 +97,18 @@
+ class SimpleGtkTestCase(unittest.TestCase):
+     global DONE_EXIT
+     global ENGINE_NAME
++    global CONFIG_SECTION
+     ENGINE_PATH = '/com/redhat/IBus/engines/table/Test/Engine'
+ 
+     @classmethod
+     def setUpClass(cls):
+         cls._flag = False
+         IBus.init()
+-        cls._gsettings = Gio.Settings(
+-            schema='org.freedesktop.ibus.engine.table',
+-            path='/org/freedesktop/ibus/engine/table/%s/' % ENGINE_NAME)
+-        cls._orig_chinesemode = cls._gsettings.get_int('chinesemode')
++        cls.__bus = IBus.Bus()
++        cls._config = cls.__bus.get_config()
++        cls._orig_chinesemode = table.variant_to_value(
++            cls._config.get_value(
++                CONFIG_SECTION, 'chinesemode'))
+         signums = [getattr(signal, s, None) for s in
+                    'SIGINT SIGTERM SIGHUP'.split()]
+         for signum in filter(None, signums):
+@@ -116,7 +119,11 @@
+                                  (signum, original_handler))
+     @classmethod
+     def tearDownClass(cls):
+-        cls._gsettings.set_int('chinesemode', cls._orig_chinesemode)
++        if cls._orig_chinesemode:
++            cls._config.set_value(
++                CONFIG_SECTION,
++                'chinesemode',
++                GLib.Variant.new_int32(cls._orig_chinesemode))
+ 
+     @classmethod
+     def signal_handler(cls, user_data):
+@@ -136,10 +142,12 @@
+         self.__inserted_text = ''
+         self.__commit_done = False
+         self.__reset_coming = False
+-        self._gsettings.set_int('chinesemode', 4)
++        self._config.set_value(
++            CONFIG_SECTION,
++            'chinesemode',
++            GLib.Variant.new_int32(4))
+ 
+     def register_ibus_engine(self):
+-        self.__bus = IBus.Bus()
+         if not self.__bus.is_connected():
+             self.fail('ibus-daemon is not running')
+             return False
